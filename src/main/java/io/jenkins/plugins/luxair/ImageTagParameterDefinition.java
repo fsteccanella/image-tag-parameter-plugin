@@ -38,17 +38,18 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
     private final String credentialId;
     private String defaultTag;
     private Ordering tagOrder;
+    private Boolean verifySsl;
     private String errorMsg = "";
 
     @DataBoundConstructor
     @SuppressWarnings("unused")
     public ImageTagParameterDefinition(String name, String description, String image, String filter,
                                        String registry, String credentialId) {
-        this(name, description, image, filter, "", registry, credentialId, config.getDefaultTagOrdering());
+        this(name, description, image, filter, "", registry, credentialId, config.getDefaultTagOrdering(), config.getDefaultVerifySsl());
     }
 
     public ImageTagParameterDefinition(String name, String description, String image, String filter, String defaultTag,
-                                       String registry, String credentialId, Ordering tagOrder) {
+                                       String registry, String credentialId, Ordering tagOrder, Boolean verifySsl) {
         super(name, description);
         this.image = image;
         this.registry = StringUtil.isNotNullOrEmpty(registry) ? registry : config.getDefaultRegistry();
@@ -56,6 +57,7 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
         this.defaultTag = StringUtil.isNotNullOrEmpty(defaultTag) ? defaultTag : "";
         this.credentialId = getDefaultOrEmptyCredentialId(this.registry, credentialId);
         this.tagOrder = tagOrder != null ? tagOrder : config.getDefaultTagOrdering();
+        this.verifySsl = verifySsl != null ? verifySsl : config.getDefaultVerifySsl();
     }
 
     public String getImage() {
@@ -94,6 +96,12 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
         this.tagOrder = tagOrder;
     }
 
+    public Boolean getVerifySsl() { return verifySsl; }
+
+    @DataBoundSetter
+    @SuppressWarnings("unused")
+    public void setVerifySsl(Boolean verifySsl) { this.verifySsl = verifySsl; }
+
     public String getErrorMsg() {
         return errorMsg;
     }
@@ -123,7 +131,7 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
         }
 
         ResultContainer<List<String>> resultContainer = ImageTag
-            .getTags(image, registry, filter, user, password, getTagOrder());
+            .getTags(image, registry, filter, user, password, getTagOrder(), getVerifySsl());
         Optional<String> optionalErrorMsg = resultContainer.getErrorMsg();
         if (optionalErrorMsg.isPresent()) {
             setErrorMsg(optionalErrorMsg.get());
@@ -162,7 +170,7 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
             ImageTagParameterValue value = (ImageTagParameterValue) defaultValue;
             return new ImageTagParameterDefinition(getName(), getDescription(),
                 getImage(), getFilter(), value.getImageTag(),
-                getRegistry(), getCredentialId(), getTagOrder());
+                getRegistry(), getCredentialId(), getTagOrder(), getVerifySsl());
         }
         return this;
     }
@@ -201,6 +209,9 @@ public class ImageTagParameterDefinition extends SimpleParameterDefinition {
         public Ordering getDefaultTagOrdering() {
             return config.getDefaultTagOrdering();
         }
+
+        @SuppressWarnings("unused")
+        public Boolean getDefaultVerifySsl() { return config.getDefaultVerifySsl(); }
 
         @SuppressWarnings("unused")
         public ListBoxModel doFillCredentialIdItems(@AncestorInPath Item context,

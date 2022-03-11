@@ -27,12 +27,12 @@ public class ImageTag {
     }
 
     public static ResultContainer<List<String>> getTags(String image, String registry, String filter,
-                                                        String user, String password, Ordering ordering) {
+                                                        String user, String password, Ordering ordering, Boolean verifySsl) {
         ResultContainer<List<String>> container = new ResultContainer<>(Collections.emptyList());
 
-        String[] authService = getAuthService(registry);
-        String token = getAuthToken(authService, image, user, password);
-        ResultContainer<List<VersionNumber>> tags = getImageTagsFromRegistry(image, registry, authService[0], token);
+        String[] authService = getAuthService(registry, verifySsl);
+        String token = getAuthToken(authService, image, user, password, verifySsl);
+        ResultContainer<List<VersionNumber>> tags = getImageTagsFromRegistry(image, registry, authService[0], token, verifySsl);
 
         if (tags.getErrorMsg().isPresent()) {
             container.setErrorMsg(tags.getErrorMsg().get());
@@ -71,7 +71,7 @@ public class ImageTag {
         return container;
     }
 
-    private static String[] getAuthService(String registry) {
+    private static String[] getAuthService(String registry, Boolean verifySsl) {
 
         String[] rtn = new String[3];
         rtn[0] = ""; // type
@@ -81,6 +81,7 @@ public class ImageTag {
 
         Unirest.config().reset();
         Unirest.config().enableCookieManagement(false).interceptor(errorInterceptor);
+        Unirest.config().verifySsl(verifySsl);
         String headerValue = Unirest.get(url).asEmpty()
             .getHeaders().getFirst("Www-Authenticate");
         Unirest.shutDown();
@@ -101,14 +102,21 @@ public class ImageTag {
         }
 
         if (type.equalsIgnoreCase("Bearer")) {
-            String pattern = "Bearer realm=\"(\\S+)\",service=\"([\\S ]+)\"";
+            String pattern = "Bearer realm=\"(\\S+)\",service=\"(\\S+)\"";
             Matcher m = Pattern.compile(pattern).matcher(headerValue);
+            String patternNoService = "Bearer realm=\"(\\S+)\"";
+            Matcher mNoService = Pattern.compile(patternNoService).matcher(headerValue);
             if (m.find()) {
                 rtn[0] = "Bearer";
                 rtn[1] = m.group(1);
                 rtn[2] = m.group(2);
-                logger.info("AuthService: type=Bearer, realm=" + rtn[0] + ", service=" + rtn[1]);
-            } else {
+                logger.info("AuthService: type=" + rtn[0] + ", realm=" + rtn[1] + ", service=" + rtn[2]);
+            } else if(mNoService.find()){
+                rtn[0] = "Bearer";
+                rtn[1] = mNoService.group(1);
+                logger.info("AuthService: type=" + rtn[0] + ", realm=" + rtn[1]);
+            }
+            else {
                 logger.warning("No AuthService available from " + url);
             }
 
@@ -121,27 +129,28 @@ public class ImageTag {
         return rtn;
     }
 
-    private static String getAuthToken(String[] authService, String image, String user, String password) {
+    private static String getAuthToken(String[] authService, String image, String user, String password, Boolean verifySsl) {
 
         String type = authService[0];
         String token = "";
 
         if (type.equals("Basic")) {
-          // The password from the AWS ECR Plugin already is converted to the basic auth token
-          if (user.equals("AWS")) {
-            return password;
-          } else {
-            token = Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
-
-            return token;
+            // The password from the AWS ECR Plugin already is converted to the basic auth token
+            if (user.equals("AWS")) {
+              return password;
+            } else {
+              token = Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
+  
+              return token;
+            }
           }
-        }
 
         String realm = authService[1];
-        String service = authService[2];
+        String service = (authService.length > 2) ? authService[2] : null;
 
         Unirest.config().reset();
         Unirest.config().enableCookieManagement(false).interceptor(errorInterceptor);
+        Unirest.config().verifySsl(verifySsl);
         GetRequest request = Unirest.get(realm);
         if (!user.isEmpty() && !password.isEmpty()) {
             logger.info("Basic authentication");
@@ -172,12 +181,13 @@ public class ImageTag {
     }
 
     private static ResultContainer<List<VersionNumber>> getImageTagsFromRegistry(String image, String registry,
-                                                                                 String authType, String token) {
+                                                                                 String authType, String token, Boolean verifySsl) {
         ResultContainer<List<VersionNumber>> resultContainer = new ResultContainer<>(new ArrayList<>());
         String url = registry + "/v2/" + image + "/tags/list";
 
         Unirest.config().reset();
         Unirest.config().enableCookieManagement(false).interceptor(errorInterceptor);
+        Unirest.config().verifySsl(verifySsl);
         HttpResponse<JsonNode> response = Unirest.get(url)
             .header("Authorization", authType + " " + token)
             .asJson();
